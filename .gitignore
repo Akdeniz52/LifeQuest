@@ -1,0 +1,83 @@
+########################
+# Genel / Ortak
+########################
+
+# Sistem dosyaları
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+
+# Çöp / cache klasörleri
+**/.cache/
+**/.temp/
+
+########################
+# Node / Next.js (frontend)
+########################
+
+# Bağımlılıklar
+frontend/node_modules/
+
+# Next.js derleme çıktıları
+frontend/.next/
+frontend/out/
+frontend/.turbo/
+
+# Diğer build çıktıları
+frontend/dist/
+frontend/build/
+
+# Çevre değişkeni dosyaları
+frontend/.env
+frontend/.env.local
+frontend/.env.development
+frontend/.env.production
+frontend/.env.test
+
+# Çeşitli
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+frontend/pnpm-debug.log*
+
+########################
+# .NET / C# (backend)
+########################
+
+# Derleme çıktıları
+backend/bin/
+backend/obj/
+
+# Rider / Visual Studio / VS Code
+.vs/
+backend/.vs/
+.vscode/
+.idea/
+
+# Kullanıcıya özel ayarlar
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# NuGet
+*.nupkg
+*.snupkg
+*.nuget.props
+*.nuget.targets
+
+########################
+# Diğer genel kalıplar
+########################
+
+# Çeşitli editör dosyaları
+*.swp
+*.swo
+*~
+
+# Coverage / test çıktıları (ileride ekleyebilirsin)
+coverage/
+test-results/
+
+
