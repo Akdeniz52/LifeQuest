@@ -111,6 +111,9 @@ public class QuestCompletionService
         questInstance.Status = QuestStatus.Completed;
         questInstance.CompletedAt = DateTime.UtcNow;
 
+        // Increment completion count for the quest definition
+        questDef.CompletionCount++;
+
         // Create progress log
         var progressLog = new ProgressLog
         {

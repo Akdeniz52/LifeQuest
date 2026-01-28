@@ -31,6 +31,7 @@ public class QuestDefinition
     public bool AutoAssign { get; set; } = false;
     public int? DeadlineHours { get; set; }
     public DateTime CreatedAt { get; set; }
+    public int CompletionCount { get; set; } = 0; // Track how many times this quest has been completed
     
     // Navigation
     public User CreatedByUser { get; set; } = null!;

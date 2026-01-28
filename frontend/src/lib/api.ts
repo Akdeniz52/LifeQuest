@@ -111,6 +111,15 @@ export const api = {
       if (!res.ok) throw new Error('Failed to create quest');
       return res.json();
     },
+
+    delete: async (token: string, questId: string) => {
+      const res = await fetch(`${API_URL}/quests/definitions/${questId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Failed to delete quest');
+      return res.json();
+    },
   },
 
   skills: {

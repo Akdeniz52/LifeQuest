@@ -38,6 +38,7 @@ interface Quest {
     baseXP: number;
     status: string;
     deadline: string;
+    completionCount?: number;
 }
 
 interface Skill {
@@ -51,11 +52,11 @@ interface Skill {
     canUse?: boolean;
 }
 
-type TabType = 'overview' | 'habits' | 'todos' | 'journal';
+type TabType = 'dailies' | 'habits' | 'journal';
 
 export default function DashboardPage() {
     const router = useRouter();
-    const [activeTab, setActiveTab] = useState<TabType>('overview');
+    const [activeTab, setActiveTab] = useState<TabType>('dailies');
     const [profile, setProfile] = useState<CharacterProfile | null>(null);
     const [stats, setStats] = useState<Stat[]>([]);
     const [quests, setQuests] = useState<Quest[]>([]);
@@ -306,12 +307,18 @@ export default function DashboardPage() {
             console.log('Creating quest with data:', questData);
 
             // Create quest definition
+            // Convert statRewards to StatEffects format
+            const statEffects = questData.statRewards.map(reward => ({
+                statDefinitionId: stats.find(s => s.name === reward.statName)?.id || '',
+                effectMultiplier: reward.value
+            })).filter(effect => effect.statDefinitionId);
+
             const createdQuest = await api.quests.create(token, {
                 title: questData.title,
                 description: questData.description,
                 questType: questData.questType,
                 baseXP: questData.baseXP,
-                statRewards: questData.statRewards,
+                statEffects: statEffects,
                 isMandatory: false,
                 difficultyMultiplier: 1.0,
             });
@@ -363,9 +370,8 @@ export default function DashboardPage() {
     const xpPercentage = profile ? (profile.currentXP / profile.xpForNextLevel) * 100 : 0;
 
     const tabs = [
-        { id: 'overview' as TabType, label: 'Overview', icon: '🏠' },
+        { id: 'dailies' as TabType, label: 'Dailies', icon: '📅' },
         { id: 'habits' as TabType, label: 'Habits', icon: '🔄' },
-        { id: 'todos' as TabType, label: 'To-Dos', icon: '✓' },
         { id: 'journal' as TabType, label: 'Journal', icon: '📔' },
     ];
 
@@ -410,8 +416,8 @@ export default function DashboardPage() {
             </div>
 
             <div className="max-w-7xl mx-auto">
-                {/* Overview Tab */}
-                {activeTab === 'overview' && (
+                {/* Dailies Tab */}
+                {activeTab === 'dailies' && (
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                         {/* Character Card */}
                         <div className="lg:col-span-1">
@@ -420,8 +426,8 @@ export default function DashboardPage() {
                                     <div className="w-24 h-24 mx-auto mb-4 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-4xl font-bold glow">
                                         {profile?.level}
                                     </div>
-                                    <h2 className="text-2xl font-bold mb-1">{profile?.name}</h2>
-                                    <p className="text-gray-400 text-sm">Level {profile?.level}</p>
+                                    <h2 className="text-2xl font-bold text-gradient mb-1">{profile?.name}</h2>
+                                    <p className="text-gray-400">Level {profile?.level}</p>
                                 </div>
 
                                 {/* XP Bar */}
@@ -461,7 +467,7 @@ export default function DashboardPage() {
                                                     <div className="flex justify-between items-center">
                                                         <span className="text-white font-bold text-base">{stat.name}</span>
                                                         <span className="text-blue-400 font-bold text-lg">
-                                                            {Math.round(stat.currentValue)}
+                                                            {stat.currentValue.toFixed(2)}
                                                         </span>
                                                     </div>
                                                 </div>
@@ -499,8 +505,7 @@ export default function DashboardPage() {
                                 </div>
                             </div>
 
-                            {/* Streaks */}
-                            <StreakDisplay dailyStreak={streaks.daily} weeklyStreak={streaks.weekly} />
+
 
                             {/* Fatigue */}
                             <div className="mt-6">
@@ -579,7 +584,7 @@ export default function DashboardPage() {
                                                     {/* Streak Counter */}
                                                     <div className="flex-shrink-0 text-right">
                                                         <div className="text-2xl font-bold text-orange-400">🔥</div>
-                                                        <div className="text-sm text-gray-400">0 day</div>
+                                                        <div className="text-sm text-gray-400">{quest.completionCount || 0} day{(quest.completionCount || 0) !== 1 ? 's' : ''}</div>
                                                     </div>
                                                 </div>
                                             </div>
@@ -593,76 +598,108 @@ export default function DashboardPage() {
 
                 {/* Habits Tab */}
                 {activeTab === 'habits' && (
-                    <div className="glass rounded-2xl p-6">
-                        <h2 className="text-2xl font-bold mb-6">Habits</h2>
-                        <p className="text-gray-400">Coming soon...</p>
-                    </div>
-                )}
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        {/* Character Card - Same as Dailies */}
+                        <div className="lg:col-span-1">
+                            <div className="glass rounded-2xl p-6 glow mb-6">
+                                <div className="text-center mb-6">
+                                    <div className="w-24 h-24 mx-auto mb-4 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-4xl font-bold glow">
+                                        {profile?.level}
+                                    </div>
+                                    <h2 className="text-2xl font-bold text-gradient mb-1">{profile?.name}</h2>
+                                    <p className="text-gray-400">Level {profile?.level}</p>
+                                </div>
 
-                {/* To-Dos Tab */}
-                {activeTab === 'todos' && (
-                    <div className="glass rounded-2xl p-6">
-                        <div className="flex items-center justify-between mb-6">
-                            <h2 className="text-2xl font-bold">To-Do List</h2>
-                            <button
-                                onClick={() => setShowCreateModal(true)}
-                                className="px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 rounded-lg font-semibold transition-all"
-                            >
-                                + New To-Do
-                            </button>
-                        </div>
+                                {/* XP Bar */}
+                                <div className="mb-6">
+                                    <div className="flex justify-between text-sm mb-2">
+                                        <span className="text-gray-400">Experience</span>
+                                        <span className="text-blue-400 font-semibold">
+                                            {profile?.currentXP} / {profile?.xpForNextLevel} XP
+                                        </span>
+                                    </div>
+                                    <div className="h-3 bg-white/5 rounded-full overflow-hidden">
+                                        <div
+                                            className="h-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-500 glow"
+                                            style={{ width: `${xpPercentage}%` }}
+                                        ></div>
+                                    </div>
+                                </div>
 
-                        <p className="text-gray-400 mb-4">One-time tasks that need to be completed</p>
-
-                        {quests.filter(q => q.questType === 'Custom').length === 0 ? (
-                            <div className="text-center py-12 text-gray-400">
-                                <p className="text-lg mb-2">No to-dos yet</p>
-                                <p className="text-sm">Create a custom task to add to your to-do list!</p>
-                            </div>
-                        ) : (
-                            <div className="space-y-3">
-                                {quests.filter(q => q.questType === 'Custom').map((quest) => (
-                                    <div
-                                        key={quest.id}
-                                        className={`glass glass-hover rounded-xl p-4 border transition-all ${quest.status === 'Completed'
-                                            ? 'border-green-500/30 bg-green-500/5'
-                                            : 'border-white/10'
-                                            }`}
-                                    >
-                                        <div className="flex items-center gap-4">
-                                            <button
-                                                onClick={() => {
-                                                    if (quest.status === 'Pending') {
-                                                        handleCompleteQuest(quest.id);
-                                                    }
-                                                }}
-                                                className={`flex-shrink-0 w-6 h-6 rounded border-2 flex items-center justify-center transition-all ${quest.status === 'Completed'
-                                                    ? 'bg-green-500 border-green-500'
-                                                    : 'border-gray-400 hover:border-blue-400'
-                                                    }`}
-                                            >
-                                                {quest.status === 'Completed' && (
-                                                    <span className="text-white text-sm">✓</span>
-                                                )}
-                                            </button>
-
-                                            <div className="flex-1">
-                                                <h3 className={`text-lg font-semibold mb-1 ${quest.status === 'Completed' ? 'line-through text-gray-400' : ''
-                                                    }`}>
-                                                    {quest.title}
-                                                </h3>
-                                                <p className="text-gray-400 text-sm mb-2">{quest.description}</p>
-                                                <div className="flex gap-2 text-xs">
-                                                    <span className="px-2 py-1 bg-purple-500/20 text-purple-400 rounded">
-                                                        +{quest.baseXP} XP
-                                                    </span>
+                                {/* Stats */}
+                                <div className="space-y-3">
+                                    <div className="flex justify-between items-center mb-3">
+                                        <h3 className="text-lg font-semibold text-gray-300">Your Stats</h3>
+                                        {profile && profile.availableStatPoints > 0 && (
+                                            <div className="px-3 py-1 bg-gradient-to-r from-yellow-500/20 to-orange-500/20 border border-yellow-500/30 rounded-lg">
+                                                <span className="text-yellow-400 font-bold">
+                                                    ⭐ {profile.availableStatPoints} {profile.availableStatPoints === 1 ? 'Point' : 'Points'} Available
+                                                </span>
+                                            </div>
+                                        )}
+                                    </div>
+                                    {stats.filter(s => !s.isLocked).slice(0, 6).map((stat) => (
+                                        <div key={stat.id} className="space-y-1">
+                                            <div className="flex justify-between items-center gap-2">
+                                                <div className="flex-1">
+                                                    <div className="flex justify-between items-center">
+                                                        <span className="text-white font-bold text-base">{stat.name}</span>
+                                                        <span className="text-blue-400 font-bold text-lg">
+                                                            {stat.currentValue.toFixed(2)}
+                                                        </span>
+                                                    </div>
                                                 </div>
+                                                {profile && profile.availableStatPoints > 0 && (
+                                                    <button
+                                                        onClick={async () => {
+                                                            const token = localStorage.getItem('token');
+                                                            if (!token) return;
+                                                            try {
+                                                                const updatedProfile = await api.character.distributeStat(token, stat.id);
+                                                                setProfile(updatedProfile);
+                                                                const updatedStats = await api.character.getStats(token);
+                                                                setStats(updatedStats);
+                                                                showNotification(`+1 ${stat.name}!`, 'success');
+                                                            } catch (error) {
+                                                                console.error('Failed to distribute stat:', error);
+                                                                showNotification('Failed to distribute stat point', 'error');
+                                                            }
+                                                        }}
+                                                        className="px-2 py-1 bg-green-500/20 hover:bg-green-500/30 text-green-400 rounded transition-all text-sm font-bold"
+                                                        title="Add 1 point"
+                                                    >
+                                                        +
+                                                    </button>
+                                                )}
+                                            </div>
+                                            <div className="h-2 bg-white/5 rounded-full overflow-hidden">
+                                                <div
+                                                    className="h-full bg-gradient-to-r from-blue-500 to-purple-500"
+                                                    style={{ width: `${(stat.currentValue / stat.maxValue) * 100}%` }}
+                                                ></div>
                                             </div>
                                         </div>
-                                    </div>
-                                ))}
+                                    ))}
+                                </div>
                             </div>
-                        )}
+
+                            {/* Fatigue */}
+                            <div className="mt-6">
+                                <FatigueMeter
+                                    fatigueLevel={fatigue.level}
+                                    questsToday={fatigue.questsToday}
+                                    recommendedMax={fatigue.recommendedMax}
+                                />
+                            </div>
+                        </div>
+
+                        {/* Habits Content */}
+                        <div className="lg:col-span-2">
+                            <div className="glass rounded-2xl p-6">
+                                <h2 className="text-2xl font-bold mb-6">Habits</h2>
+                                <p className="text-gray-400">Coming soon...</p>
+                            </div>
+                        </div>
                     </div>
                 )}
 

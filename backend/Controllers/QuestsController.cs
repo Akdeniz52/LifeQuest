@@ -323,7 +323,8 @@ public class QuestsController : ControllerBase
                 Status = qi.Status.ToString(),
                 AssignedAt = qi.AssignedAt,
                 Deadline = qi.Deadline,
-                CompletedAt = qi.CompletedAt
+                CompletedAt = qi.CompletedAt,
+                CompletionCount = qi.QuestDefinition.CompletionCount
             }).ToList();
 
             return Ok(response);
@@ -365,7 +366,8 @@ public class QuestsController : ControllerBase
                 Status = qi.Status.ToString(),
                 AssignedAt = qi.AssignedAt,
                 Deadline = qi.Deadline,
-                CompletedAt = qi.CompletedAt
+                CompletedAt = qi.CompletedAt,
+                CompletionCount = qi.QuestDefinition.CompletionCount
             }).ToList();
 
             return Ok(response);

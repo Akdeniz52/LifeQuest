@@ -5,7 +5,7 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Leveling System - Solo Leveling",
+  title: "Leveling System",
   description: "Personal development gamification system",
 };
 

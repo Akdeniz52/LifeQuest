@@ -61,7 +61,7 @@ public static class ProgressionFormulas
     /// </summary>
     public static double CalculateStatGain(int baseXP, double statEffectMultiplier)
     {
-        return baseXP * statEffectMultiplier * 0.1; // 0.1 is scaling factor
+        return baseXP * statEffectMultiplier * 0.001; // 0.001 is scaling factor for very gradual progression
     }
 
     /// <summary>

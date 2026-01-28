@@ -56,6 +56,7 @@ public class QuestInstanceResponse
     public DateTime AssignedAt { get; set; }
     public DateTime? Deadline { get; set; }
     public DateTime? CompletedAt { get; set; }
+    public int CompletionCount { get; set; } = 0;
 }
 
 public class CompleteQuestResponse

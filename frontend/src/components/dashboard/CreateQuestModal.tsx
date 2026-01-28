@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { api } from '@/lib/api';
 
 interface CreateQuestModalProps {
     isOpen: boolean;
@@ -17,19 +18,39 @@ export interface QuestFormData {
     statRewards: { statName: string; value: number }[];
     startImmediately: boolean;
     targetCount: number;
+    selectedStatId?: string;
 }
 
 export default function CreateQuestModal({ isOpen, onClose, onSubmit }: CreateQuestModalProps) {
     const [formData, setFormData] = useState<QuestFormData>({
         title: '',
         description: '',
-        questType: 'Custom',
+        questType: 'Daily',
         difficulty: 'Medium',
         baseXP: 50,
         statRewards: [],
         startImmediately: true,
         targetCount: 1,
+        selectedStatId: undefined,
     });
+
+    const [availableStats, setAvailableStats] = useState<any[]>([]);
+
+    useEffect(() => {
+        const fetchStats = async () => {
+            const token = localStorage.getItem('token');
+            if (!token) return;
+            try {
+                const stats = await api.character.getStats(token);
+                setAvailableStats(stats.filter((s: any) => !s.isLocked));
+            } catch (error) {
+                console.error('Failed to fetch stats:', error);
+            }
+        };
+        if (isOpen) {
+            fetchStats();
+        }
+    }, [isOpen]);
 
     const difficulties = [
         { value: 'Easy', xp: 25, color: 'text-green-400' },
@@ -39,33 +60,25 @@ export default function CreateQuestModal({ isOpen, onClose, onSubmit }: CreateQu
     ];
 
     const questTypes = [
-        {
-            value: 'Daily',
-            icon: '🔄',
-            description: 'Repeats every day'
-        },
-        {
-            value: 'Weekly',
-            icon: '📅',
-            description: 'Repeats on selected days'
-        },
-        {
-            value: 'Monthly',
-            icon: '📆',
-            description: 'Repeats on selected date'
-        },
-        {
-            value: 'Custom',
-            icon: '⭐',
-            description: 'One-time task'
-        }
+        { value: 'Daily', label: 'Daily', icon: '🌅', description: 'Repeats every day' },
+        { value: 'Weekly', label: 'Weekly', icon: '📅', description: 'Repeats on selected days' },
+        { value: 'Monthly', label: 'Monthly', icon: '📆', description: 'Repeats on a specific day each month' },
     ];
 
     const weekDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        onSubmit(formData);
+
+        // Build stat rewards array if stat is selected
+        const questData = {
+            ...formData,
+            statRewards: formData.selectedStatId
+                ? [{ statName: availableStats.find(s => s.id === formData.selectedStatId)?.name || '', value: 1.0 }]
+                : []
+        };
+
+        onSubmit(questData);
         setFormData({
             title: '',
             description: '',
@@ -75,6 +88,7 @@ export default function CreateQuestModal({ isOpen, onClose, onSubmit }: CreateQu
             statRewards: [],
             startImmediately: true,
             targetCount: 1,
+            selectedStatId: undefined,
         });
         onClose();
     };
@@ -130,7 +144,7 @@ export default function CreateQuestModal({ isOpen, onClose, onSubmit }: CreateQu
                         <label className="block text-sm font-medium text-gray-300 mb-2">
                             Quest Type
                         </label>
-                        <div className="grid grid-cols-2 gap-3">
+                        <div className="grid grid-cols-3 gap-3">
                             {questTypes.map((type) => (
                                 <button
                                     key={type.value}
@@ -170,6 +184,26 @@ export default function CreateQuestModal({ isOpen, onClose, onSubmit }: CreateQu
                                 </button>
                             ))}
                         </div>
+                    </div>
+
+                    {/* Stat Selection */}
+                    <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">
+                            Associated Stat (Optional)
+                        </label>
+                        <select
+                            value={formData.selectedStatId || ''}
+                            onChange={(e) => setFormData({ ...formData, selectedStatId: e.target.value || undefined })}
+                            className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-white"
+                        >
+                            <option value="" className="bg-gray-900">No stat association</option>
+                            {availableStats.map((stat) => (
+                                <option key={stat.id} value={stat.id} className="bg-gray-900">
+                                    {stat.name}
+                                </option>
+                            ))}
+                        </select>
+                        <p className="text-xs text-gray-400 mt-2">Completing this quest will increase the selected stat</p>
                     </div>
 
                     {/* Weekly Day Selector */}
