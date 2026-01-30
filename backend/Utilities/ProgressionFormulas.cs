@@ -57,11 +57,11 @@ public static class ProgressionFormulas
 
     /// <summary>
     /// Calculate stat gain from quest completion
-    /// Formula: base_xp * stat_effect_multiplier
+    /// Formula: base_xp * stat_effect_multiplier * scaling_factor
     /// </summary>
     public static double CalculateStatGain(int baseXP, double statEffectMultiplier)
     {
-        return baseXP * statEffectMultiplier * 0.001; // 0.001 is scaling factor for very gradual progression
+        return baseXP * statEffectMultiplier * 0.0015; // Scaling factor for gradual progression
     }
 
     /// <summary>

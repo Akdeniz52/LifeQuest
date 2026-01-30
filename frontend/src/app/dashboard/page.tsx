@@ -168,7 +168,7 @@ export default function DashboardPage() {
 
     const loadFatigue = async (token: string) => {
         try {
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/character/fatigue`, {
+            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/quests/fatigue`, {
                 headers: { 'Authorization': `Bearer ${token}` },
             });
             if (response.ok) {
@@ -224,6 +224,10 @@ export default function DashboardPage() {
                     questsToday: completedToday
                 };
             });
+
+            // Reload stats to update stat panel with new gains
+            const statsData = await api.character.getStats(token);
+            setStats(statsData);
 
             // Reload quest history
             loadQuestHistory(token);
@@ -319,14 +323,15 @@ export default function DashboardPage() {
                 questType: questData.questType,
                 baseXP: questData.baseXP,
                 statEffects: statEffects,
+                weeklyDays: questData.weeklyDays,
                 isMandatory: false,
                 difficultyMultiplier: 1.0,
             });
 
             console.log('Quest created:', createdQuest);
 
-            // Auto-assign if startImmediately is checked
-            if (questData.startImmediately) {
+            // Auto-assign if startImmediately is checked (but NOT for Weekly quests - backend handles day-based assignment)
+            if (questData.startImmediately && questData.questType !== 'Weekly') {
                 console.log('Auto-assigning quest:', createdQuest.id);
                 try {
                     const assignResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/quests/assign/${createdQuest.id}`, {
@@ -460,7 +465,7 @@ export default function DashboardPage() {
                                             </div>
                                         )}
                                     </div>
-                                    {stats.filter(s => !s.isLocked).slice(0, 6).map((stat) => (
+                                    {stats.filter(s => !(s.isLocked || (s as any).IsLocked)).map((stat) => (
                                         <div key={stat.id} className="space-y-1">
                                             <div className="flex justify-between items-center gap-2">
                                                 <div className="flex-1">
@@ -638,7 +643,7 @@ export default function DashboardPage() {
                                             </div>
                                         )}
                                     </div>
-                                    {stats.filter(s => !s.isLocked).slice(0, 6).map((stat) => (
+                                    {stats.filter(s => !(s.isLocked || (s as any).IsLocked)).map((stat) => (
                                         <div key={stat.id} className="space-y-1">
                                             <div className="flex justify-between items-center gap-2">
                                                 <div className="flex-1">

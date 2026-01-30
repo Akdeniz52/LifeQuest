@@ -18,7 +18,8 @@ export interface QuestFormData {
     statRewards: { statName: string; value: number }[];
     startImmediately: boolean;
     targetCount: number;
-    selectedStatId?: string;
+    selectedStatIds: string[]; // Changed from single to multiple
+    weeklyDays?: number[];
 }
 
 export default function CreateQuestModal({ isOpen, onClose, onSubmit }: CreateQuestModalProps) {
@@ -31,10 +32,12 @@ export default function CreateQuestModal({ isOpen, onClose, onSubmit }: CreateQu
         statRewards: [],
         startImmediately: true,
         targetCount: 1,
-        selectedStatId: undefined,
+        selectedStatIds: [],
     });
 
     const [availableStats, setAvailableStats] = useState<any[]>([]);
+    const [selectedWeeklyDays, setSelectedWeeklyDays] = useState<number[]>([]);
+    const [selectedMonthlyDay, setSelectedMonthlyDay] = useState<number>(1);
 
     useEffect(() => {
         const fetchStats = async () => {
@@ -42,7 +45,11 @@ export default function CreateQuestModal({ isOpen, onClose, onSubmit }: CreateQu
             if (!token) return;
             try {
                 const stats = await api.character.getStats(token);
-                setAvailableStats(stats.filter((s: any) => !s.isLocked));
+                console.log('All stats from API:', stats); // Debug log
+                // Filter out locked stats (handle both camelCase and PascalCase)
+                const unlockedStats = stats.filter((s: any) => !(s.isLocked || s.IsLocked));
+                console.log('Unlocked stats:', unlockedStats); // Debug log
+                setAvailableStats(unlockedStats);
             } catch (error) {
                 console.error('Failed to fetch stats:', error);
             }
@@ -70,12 +77,15 @@ export default function CreateQuestModal({ isOpen, onClose, onSubmit }: CreateQu
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
 
-        // Build stat rewards array if stat is selected
+        // Build stat rewards array from all selected stats
         const questData = {
             ...formData,
-            statRewards: formData.selectedStatId
-                ? [{ statName: availableStats.find(s => s.id === formData.selectedStatId)?.name || '', value: 1.0 }]
-                : []
+            statRewards: formData.selectedStatIds.map(statId => ({
+                statName: availableStats.find(s => s.id === statId)?.name || '',
+                value: 1.0
+            })),
+            weeklyDays: formData.questType === 'Weekly' ? selectedWeeklyDays : undefined,
+            monthlyDay: formData.questType === 'Monthly' ? selectedMonthlyDay : undefined
         };
 
         onSubmit(questData);
@@ -88,8 +98,10 @@ export default function CreateQuestModal({ isOpen, onClose, onSubmit }: CreateQu
             statRewards: [],
             startImmediately: true,
             targetCount: 1,
-            selectedStatId: undefined,
+            selectedStatIds: [],
         });
+        setSelectedWeeklyDays([]);
+        setSelectedMonthlyDay(1);
         onClose();
     };
 
@@ -186,24 +198,46 @@ export default function CreateQuestModal({ isOpen, onClose, onSubmit }: CreateQu
                         </div>
                     </div>
 
-                    {/* Stat Selection */}
+                    {/* Stat Selection - Multi-select */}
                     <div>
                         <label className="block text-sm font-medium text-gray-300 mb-2">
-                            Associated Stat (Optional)
+                            Associated Stats (Optional - select multiple)
                         </label>
-                        <select
-                            value={formData.selectedStatId || ''}
-                            onChange={(e) => setFormData({ ...formData, selectedStatId: e.target.value || undefined })}
-                            className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-white"
-                        >
-                            <option value="" className="bg-gray-900">No stat association</option>
-                            {availableStats.map((stat) => (
-                                <option key={stat.id} value={stat.id} className="bg-gray-900">
-                                    {stat.name}
-                                </option>
-                            ))}
-                        </select>
-                        <p className="text-xs text-gray-400 mt-2">Completing this quest will increase the selected stat</p>
+                        <div className="flex flex-wrap gap-2">
+                            {availableStats.map((stat) => {
+                                const isSelected = formData.selectedStatIds.includes(stat.id);
+                                return (
+                                    <button
+                                        key={stat.id}
+                                        type="button"
+                                        onClick={() => {
+                                            if (isSelected) {
+                                                setFormData({
+                                                    ...formData,
+                                                    selectedStatIds: formData.selectedStatIds.filter(id => id !== stat.id)
+                                                });
+                                            } else {
+                                                setFormData({
+                                                    ...formData,
+                                                    selectedStatIds: [...formData.selectedStatIds, stat.id]
+                                                });
+                                            }
+                                        }}
+                                        className={`px-3 py-2 rounded-lg font-medium transition-all text-sm ${isSelected
+                                            ? 'bg-gradient-to-r from-blue-500 to-purple-500 text-white'
+                                            : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                                            }`}
+                                    >
+                                        {stat.name}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        <p className="text-xs text-gray-400 mt-2">
+                            {formData.selectedStatIds.length === 0
+                                ? 'No stats selected - quest will only give XP'
+                                : `${formData.selectedStatIds.length} stat(s) will increase on completion`}
+                        </p>
                     </div>
 
                     {/* Weekly Day Selector */}
@@ -213,15 +247,31 @@ export default function CreateQuestModal({ isOpen, onClose, onSubmit }: CreateQu
                                 Select Days
                             </label>
                             <div className="grid grid-cols-7 gap-2">
-                                {weekDays.map((day) => (
-                                    <button
-                                        key={day}
-                                        type="button"
-                                        className="px-2 py-3 rounded-lg font-semibold transition-all bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 text-xs"
-                                    >
-                                        {day.slice(0, 3)}
-                                    </button>
-                                ))}
+                                {weekDays.map((day, index) => {
+                                    // Convert to day number: Monday=1, Tuesday=2, ..., Sunday=0
+                                    const dayNumber = index === 6 ? 0 : index + 1;
+                                    const isSelected = selectedWeeklyDays.includes(dayNumber);
+
+                                    return (
+                                        <button
+                                            key={day}
+                                            type="button"
+                                            onClick={() => {
+                                                if (isSelected) {
+                                                    setSelectedWeeklyDays(selectedWeeklyDays.filter(d => d !== dayNumber));
+                                                } else {
+                                                    setSelectedWeeklyDays([...selectedWeeklyDays, dayNumber]);
+                                                }
+                                            }}
+                                            className={`px-2 py-3 rounded-lg font-semibold transition-all text-xs ${isSelected
+                                                ? 'bg-blue-500 text-white'
+                                                : 'bg-blue-500/20 text-blue-400 hover:bg-blue-500/30'
+                                                }`}
+                                        >
+                                            {day.slice(0, 3)}
+                                        </button>
+                                    );
+                                })}
                             </div>
                             <p className="text-xs text-gray-400 mt-2">Quest will be active on selected days</p>
                         </div>

@@ -11,13 +11,16 @@ public class QuestCompletionService
 {
     private readonly ApplicationDbContext _context;
     private readonly ILogger<QuestCompletionService> _logger;
+    private readonly FatigueService _fatigueService;
 
     public QuestCompletionService(
         ApplicationDbContext context,
-        ILogger<QuestCompletionService> logger)
+        ILogger<QuestCompletionService> logger,
+        FatigueService fatigueService)
     {
         _context = context;
         _logger = logger;
+        _fatigueService = fatigueService;
     }
 
     public async Task<CompleteQuestResponse> CompleteQuest(Guid questInstanceId, Guid characterId)
@@ -54,7 +57,11 @@ public class QuestCompletionService
         var oldLevel = character.Level;
         var statChanges = new List<StatChangeDto>();
 
-        // Update stats
+        // Calculate total stat count to divide gains equally
+        var totalStatCount = questDef.StatEffects.Count;
+        var statDivisor = totalStatCount > 0 ? totalStatCount : 1;
+
+        // Update stats - gains are divided equally among all selected stats
         foreach (var statEffect in questDef.StatEffects)
         {
             var characterStat = character.Stats
@@ -66,7 +73,7 @@ public class QuestCompletionService
                 var statGain = ProgressionFormulas.CalculateStatGain(
                     questDef.BaseXP,
                     statEffect.EffectMultiplier
-                );
+                ) / statDivisor; // Divide by number of stats
 
                 characterStat.CurrentValue = Math.Min(
                     characterStat.CurrentValue + statGain,
@@ -170,6 +177,9 @@ public class QuestCompletionService
         _context.SystemMessages.Add(systemMessage);
 
         await _context.SaveChangesAsync();
+
+        // Update fatigue after quest completion
+        await _fatigueService.UpdateFatigueAfterQuestCompletion(characterId);
 
         _logger.LogInformation(
             "Quest completed: {QuestId} by character {CharacterId}, XP: {XP}, LevelUp: {LevelUp}",

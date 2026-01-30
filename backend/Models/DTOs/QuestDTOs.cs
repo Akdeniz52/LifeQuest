@@ -6,10 +6,12 @@ public class CreateQuestRequest
 {
     public string Title { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
-    public string QuestType { get; set; } = "Custom"; // Daily, Weekly, Custom, Penalty
+    public string QuestType { get; set; } = "Custom"; // Daily, Weekly, Monthly, Custom, Penalty
     public bool IsMandatory { get; set; } = false;
     public int BaseXP { get; set; }
     public double DifficultyMultiplier { get; set; } = 1.0;
+    public List<int>? WeeklyDays { get; set; } // Day numbers for weekly quests (0=Sunday, 1=Monday, ..., 6=Saturday)
+    public int? MonthlyDay { get; set; } // Day of month (1-31) for monthly quests
     public List<QuestStatEffectDto> StatEffects { get; set; } = new();
 }
 
@@ -40,6 +42,8 @@ public class QuestDefinitionResponse
     public double DifficultyMultiplier { get; set; }
     public bool IsActive { get; set; }
     public DateTime CreatedAt { get; set; }
+    public string? WeeklyDays { get; set; } // Comma-separated day numbers
+    public int? MonthlyDay { get; set; } // Day of month (1-31)
     public List<QuestStatEffectDto> StatEffects { get; set; } = new();
 }
 

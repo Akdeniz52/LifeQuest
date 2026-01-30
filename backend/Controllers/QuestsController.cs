@@ -127,6 +127,22 @@ public class QuestsController : ControllerBase
                 }
             }
 
+            // Set recurrence type and auto-assign based on quest type
+            RecurrenceType? recurrenceType = questType switch
+            {
+                QuestType.Daily => Models.Entities.RecurrenceType.Daily,
+                QuestType.Weekly => Models.Entities.RecurrenceType.Weekly,
+                QuestType.Monthly => Models.Entities.RecurrenceType.Monthly,
+                _ => null
+            };
+
+            // Convert weekly days list to comma-separated string
+            string? weeklyDaysString = null;
+            if (questType == QuestType.Weekly && request.WeeklyDays != null && request.WeeklyDays.Any())
+            {
+                weeklyDaysString = string.Join(",", request.WeeklyDays.OrderBy(d => d));
+            }
+
             var quest = new QuestDefinition
             {
                 Id = Guid.NewGuid(),
@@ -138,6 +154,10 @@ public class QuestsController : ControllerBase
                 BaseXP = request.BaseXP,
                 DifficultyMultiplier = request.DifficultyMultiplier,
                 IsActive = true,
+                RecurrenceType = recurrenceType,
+                AutoAssign = questType == QuestType.Daily || questType == QuestType.Weekly || questType == QuestType.Monthly,
+                WeeklyDays = weeklyDaysString,
+                MonthlyDay = questType == QuestType.Monthly ? request.MonthlyDay : null,
                 CreatedAt = DateTime.UtcNow
             };
 
@@ -160,6 +180,62 @@ public class QuestsController : ControllerBase
 
             _logger.LogInformation("Quest created: {QuestId} by user {UserId}", quest.Id, userId);
 
+            // For Daily quests, create the first instance immediately
+            // For Weekly quests, only create instance if today matches selected days
+            // For Monthly quests, only create instance if today matches selected day of month
+            if (questType == QuestType.Daily)
+            {
+                var characterId = GetCharacterId();
+                await _questAssignmentService.AssignQuest(characterId, quest.Id);
+                _logger.LogInformation("Created first instance for Daily quest {QuestId}", quest.Id);
+            }
+            else if (questType == QuestType.Weekly)
+            {
+                var characterId = GetCharacterId();
+                var todayDayOfWeek = (int)DateTime.UtcNow.DayOfWeek;
+                
+                // Check if today is one of the selected days
+                bool shouldCreateToday = false;
+                if (!string.IsNullOrEmpty(weeklyDaysString))
+                {
+                    var selectedDays = weeklyDaysString.Split(',')
+                        .Select(d => int.TryParse(d.Trim(), out var day) ? day : -1)
+                        .Where(d => d >= 0 && d <= 6)
+                        .ToList();
+                    
+                    shouldCreateToday = selectedDays.Contains(todayDayOfWeek);
+                }
+                
+                if (shouldCreateToday)
+                {
+                    await _questAssignmentService.AssignQuest(characterId, quest.Id);
+                    _logger.LogInformation("Created first instance for Weekly quest {QuestId} (today is a selected day)", quest.Id);
+                }
+                else
+                {
+                    _logger.LogInformation("Weekly quest {QuestId} created but not assigned today (today is not a selected day)", quest.Id);
+                }
+            }
+            else if (questType == QuestType.Monthly)
+            {
+                var characterId = GetCharacterId();
+                var todayDayOfMonth = DateTime.UtcNow.Day;
+                
+                // Check if today is the selected day of month
+                bool shouldCreateToday = quest.MonthlyDay.HasValue && quest.MonthlyDay.Value == todayDayOfMonth;
+                
+                if (shouldCreateToday)
+                {
+                    await _questAssignmentService.AssignQuest(characterId, quest.Id);
+                    _logger.LogInformation("Created first instance for Monthly quest {QuestId} (today is day {DayOfMonth})", quest.Id, todayDayOfMonth);
+                }
+                else
+                {
+                    _logger.LogInformation("Monthly quest {QuestId} created but not assigned today (today is day {TodayDay}, quest is for day {QuestDay})", 
+                        quest.Id, todayDayOfMonth, quest.MonthlyDay);
+                }
+            }
+
             var response = new QuestDefinitionResponse
             {
                 Id = quest.Id,
@@ -171,6 +247,8 @@ public class QuestsController : ControllerBase
                 DifficultyMultiplier = quest.DifficultyMultiplier,
                 IsActive = quest.IsActive,
                 CreatedAt = quest.CreatedAt,
+                WeeklyDays = quest.WeeklyDays,
+                MonthlyDay = quest.MonthlyDay,
                 StatEffects = request.StatEffects
             };
 
@@ -298,6 +376,15 @@ public class QuestsController : ControllerBase
         {
             var characterId = GetCharacterId();
             var today = DateTime.UtcNow.Date;
+
+            // Ensure daily quests are assigned for today
+            await EnsureDailyQuestsForToday(characterId);
+            
+            // Ensure weekly quests are assigned for today (if today matches selected days)
+            await EnsureWeeklyQuestsForToday(characterId);
+            
+            // Ensure monthly quests are assigned for today (if today matches selected day of month)
+            await EnsureMonthlyQuestsForToday(characterId);
 
             // Return both Pending and Completed quests for today
             var instances = await _context.QuestInstances
@@ -520,7 +607,7 @@ public class QuestsController : ControllerBase
 
             return Ok(new FatigueResponse
             {
-                CurrentFatigue = Math.Round(fatigue, 2),
+                CurrentFatigue = Math.Round(fatigue * 100, 0),  // Convert to percentage (0-100)
                 QuestsCompletedToday = fatigueLog?.QuestsCompleted ?? 0,
                 QuestsAssignedToday = fatigueLog?.QuestsAssigned ?? 0,
                 XPPenalty = Math.Round(fatigue, 2),
@@ -604,6 +691,141 @@ public class QuestsController : ControllerBase
         {
             _logger.LogError(ex, "Error marking messages as read");
             return StatusCode(500, new { message = "An error occurred while marking messages as read" });
+        }
+    }
+
+    /// <summary>
+    /// Ensures all daily quests with AutoAssign are created for today
+    /// </summary>
+    private async Task EnsureDailyQuestsForToday(Guid characterId)
+    {
+        var userId = GetUserId();
+        var today = DateTime.UtcNow.Date;
+
+        // Get all active daily quest definitions with AutoAssign
+        var dailyQuestDefinitions = await _context.QuestDefinitions
+            .Where(q => q.CreatedByUserId == userId &&
+                       q.IsActive &&
+                       q.AutoAssign &&
+                       q.RecurrenceType == Models.Entities.RecurrenceType.Daily)
+            .ToListAsync();
+
+        foreach (var questDef in dailyQuestDefinitions)
+        {
+            // Check if there's already ANY instance for today (pending or completed)
+            // We don't want to create a new instance if the quest was already completed today
+            var existingInstance = await _context.QuestInstances
+                .FirstOrDefaultAsync(qi =>
+                    qi.CharacterId == characterId &&
+                    qi.QuestDefinitionId == questDef.Id &&
+                    qi.AssignedAt >= today);
+
+            // Only create a new instance if there's NO instance for today at all
+            if (existingInstance == null)
+            {
+                await _questAssignmentService.AssignQuest(characterId, questDef.Id);
+                _logger.LogInformation("Auto-assigned daily quest {QuestId} to character {CharacterId}", 
+                    questDef.Id, characterId);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Ensures weekly quests are created for today if today matches their selected days
+    /// </summary>
+    private async Task EnsureWeeklyQuestsForToday(Guid characterId)
+    {
+        var userId = GetUserId();
+        var today = DateTime.UtcNow.Date;
+        var todayDayOfWeek = (int)DateTime.UtcNow.DayOfWeek; // 0=Sunday, 1=Monday, ..., 6=Saturday
+
+        // Get all active weekly quest definitions with AutoAssign
+        var weeklyQuestDefinitions = await _context.QuestDefinitions
+            .Where(q => q.CreatedByUserId == userId &&
+                       q.IsActive &&
+                       q.AutoAssign &&
+                       q.RecurrenceType == Models.Entities.RecurrenceType.Weekly)
+            .ToListAsync();
+
+        foreach (var questDef in weeklyQuestDefinitions)
+        {
+            // Check if today is one of the selected days for this quest
+            bool shouldAppearToday = false;
+            
+            if (!string.IsNullOrEmpty(questDef.WeeklyDays))
+            {
+                var selectedDays = questDef.WeeklyDays.Split(',')
+                    .Select(d => int.TryParse(d.Trim(), out var day) ? day : -1)
+                    .Where(d => d >= 0 && d <= 6)
+                    .ToList();
+
+                shouldAppearToday = selectedDays.Contains(todayDayOfWeek);
+            }
+            else
+            {
+                // If no days specified, appear every day (backward compatibility)
+                shouldAppearToday = true;
+            }
+
+            if (shouldAppearToday)
+            {
+                // Check if there's already ANY instance for today (pending or completed)
+                var existingInstance = await _context.QuestInstances
+                    .FirstOrDefaultAsync(qi =>
+                        qi.CharacterId == characterId &&
+                        qi.QuestDefinitionId == questDef.Id &&
+                        qi.AssignedAt >= today);
+
+                // Only create a new instance if there's NO instance for today at all
+                if (existingInstance == null)
+                {
+                    await _questAssignmentService.AssignQuest(characterId, questDef.Id);
+                    _logger.LogInformation("Auto-assigned weekly quest {QuestId} to character {CharacterId} for day {DayOfWeek}", 
+                        questDef.Id, characterId, todayDayOfWeek);
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Ensures monthly quests are created for today if today matches their selected day of month
+    /// </summary>
+    private async Task EnsureMonthlyQuestsForToday(Guid characterId)
+    {
+        var userId = GetUserId();
+        var today = DateTime.UtcNow.Date;
+        var todayDayOfMonth = DateTime.UtcNow.Day; // 1-31
+
+        // Get all active monthly quest definitions with AutoAssign
+        var monthlyQuestDefinitions = await _context.QuestDefinitions
+            .Where(q => q.CreatedByUserId == userId &&
+                       q.IsActive &&
+                       q.AutoAssign &&
+                       q.RecurrenceType == Models.Entities.RecurrenceType.Monthly)
+            .ToListAsync();
+
+        foreach (var questDef in monthlyQuestDefinitions)
+        {
+            // Check if today is the selected day of month for this quest
+            bool shouldAppearToday = questDef.MonthlyDay.HasValue && questDef.MonthlyDay.Value == todayDayOfMonth;
+
+            if (shouldAppearToday)
+            {
+                // Check if there's already ANY instance for today (pending or completed)
+                var existingInstance = await _context.QuestInstances
+                    .FirstOrDefaultAsync(qi =>
+                        qi.CharacterId == characterId &&
+                        qi.QuestDefinitionId == questDef.Id &&
+                        qi.AssignedAt >= today);
+
+                // Only create a new instance if there's NO instance for today at all
+                if (existingInstance == null)
+                {
+                    await _questAssignmentService.AssignQuest(characterId, questDef.Id);
+                    _logger.LogInformation("Auto-assigned monthly quest {QuestId} to character {CharacterId} for day {DayOfMonth}", 
+                        questDef.Id, characterId, todayDayOfMonth);
+                }
+            }
         }
     }
 }
